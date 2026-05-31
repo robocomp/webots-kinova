@@ -1,23 +1,23 @@
-# P3BotBridge
+# KinovaBridge
 A brief introduction to the component. Describe its purpose, functionality, and any specific features here.
 ```
 <YOUR BRIEFING>
 ```
 
 ## Dependencies
-The following dependencies are required to build and run P3BotBridge. Ensure they are installed and properly configured on your system before proceeding:
+The following dependencies are required to build and run KinovaBridge. Ensure they are installed and properly configured on your system before proceeding:
 ```
 <YOUR DEPENDENCIES>
 ```
 
 ## Configuration parameters
-Like any other component, P3BotBridge requires a configuration file to start. In etc/config or etc/config.toml, you can find an example of the configuration file.
+Like any other component, KinovaBridge requires a configuration file to start. In etc/config or etc/config.toml, you can find an example of the configuration file.
 
 ## Starting the component
 To avoid modifying the config file directly in the repository, you can copy it to the component's home directory. This prevents changes from being overridden by future `git pull` commands:
 
 ```bash
-cd <P3BotBridge's path> 
+cd <KinovaBridge's path> 
 cp etc/config etc/yourConfig
 ```
 
@@ -25,12 +25,12 @@ After editing the new config file we can run the component:
 
 ```bash
 cmake -B build && make -C build -j12 # Compile the component
-bin/P3BotBridge etc/yourConfig # Execute the component
+bin/KinovaBridge etc/yourConfig # Execute the component
 ```
 -----
 -----
 # Developer Notes
-This section explains how to work with the generated code of P3BotBridge, including what can be modified and how to use key features.
+This section explains how to work with the generated code of KinovaBridge, including what can be modified and how to use key features.
 ## Editable Files
 You can freely edit the following files:
 - etc/* – Configuration files

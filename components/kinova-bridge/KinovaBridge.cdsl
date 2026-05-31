@@ -7,7 +7,7 @@ import "JoystickAdapter.idsl";
 import "CameraRGBDSimple.idsl";
 import "Webots2Robocomp.idsl";
 
-Component P3BotBridge
+Component KinovaBridge
 {
     Communications
     {

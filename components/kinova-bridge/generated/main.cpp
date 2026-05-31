@@ -18,11 +18,11 @@
  */
 
 
-/** \mainpage RoboComp::P3BotBridge
+/** \mainpage RoboComp::KinovaBridge
  *
  * \section intro_sec Introduction
  *
- * The P3BotBridge component...
+ * The KinovaBridge component...
  *
  * \section interface_sec Interface
  *
@@ -34,7 +34,7 @@
  * ...
  *
  * \subsection install2_ssec Compile and install
- * cd P3BotBridge
+ * cd KinovaBridge
  * <br>
  * cmake . && make
  * <br>
@@ -52,7 +52,7 @@
  *
  * \subsection execution_ssec Execution
  *
- * Just: "${PATH_TO_BINARY}/P3BotBridge --Ice.Config=${PATH_TO_CONFIG_FILE}"
+ * Just: "${PATH_TO_BINARY}/KinovaBridge --Ice.Config=${PATH_TO_CONFIG_FILE}"
  *
  * \subsection running_ssec Once running
  *
@@ -99,8 +99,8 @@
 
 //#define USE_QTGUI
 
-#define PROGRAM_NAME    "P3BotBridge"
-#define SERVER_FULL_NAME   "RoboComp P3BotBridge::P3BotBridge"
+#define PROGRAM_NAME    "KinovaBridge"
+#define SERVER_FULL_NAME   "RoboComp KinovaBridge::KinovaBridge"
 
 
 template <typename InterfaceType>
@@ -228,10 +228,10 @@ void subscribe( const Ice::CommunicatorPtr& communicator,
 }
 
 
-class P3BotBridge : public Ice::Application
+class KinovaBridge : public Ice::Application
 {
 public:
-	P3BotBridge (QString configFile, QString prfx, bool startup_check) { 
+	KinovaBridge (QString configFile, QString prfx, bool startup_check) { 
 		this->configFile = configFile.toStdString();
 		this->prefix = prfx.toStdString();
 		this->startup_check_flag=startup_check; 
@@ -252,7 +252,7 @@ public:
 	virtual int run(int, char*[]);
 };
 
-Ice::InitializationData P3BotBridge::getInitializationDataIce(){
+Ice::InitializationData KinovaBridge::getInitializationDataIce(){
         Ice::InitializationData initData;
         initData.properties = Ice::createProperties();
         initData.properties->setProperty("Ice.Warn.Connections", this->configLoader.get<std::string>("Ice.Warn.Connections"));
@@ -262,14 +262,14 @@ Ice::InitializationData P3BotBridge::getInitializationDataIce(){
 		return initData;
 }
 
-void P3BotBridge::initialize()
+void KinovaBridge::initialize()
 {
     this->configLoader.load(this->configFile);
 	this->configLoader.printConfig();
 	std::cout<<std::endl;
 }
 
-int P3BotBridge::run(int argc, char* argv[])
+int KinovaBridge::run(int argc, char* argv[])
 {
 #ifdef USE_QTGUI
 	QApplication a(argc, argv);  // GUI application
@@ -444,7 +444,7 @@ int main(int argc, char* argv[])
 		}
 
 	}
-	P3BotBridge app(configFile, prefix, startup_check_flag);
+	KinovaBridge app(configFile, prefix, startup_check_flag);
 
 	return app.main(argc, argv, app.getInitializationDataIce());
 }
