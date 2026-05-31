@@ -1,0 +1,26 @@
+# Build artefacts
+build/
+bin/
+cmake-build-debug/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.o
+*.so
+*.a
+
+# Editor / IDE
+.qt/
+.idea/
+.vscode/
+__pycache__
+
+# robocompdsl auto-generated build subtrees (re-built from the .cdsl)
+*_autogen/
+*.ice
+*.new
+
+# Webots editor session autosaves
+worlds/.*.wbproj
+worlds/.*.jpg

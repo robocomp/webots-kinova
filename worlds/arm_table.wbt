@@ -1,0 +1,55 @@
+#VRML_SIM R2025a utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/floors/protos/RectangleArena.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/appearances/protos/Parquetry.proto"
+EXTERNPROTO "../protos/KinovaGen3.proto"
+EXTERNPROTO "../protos/WaterBottleOpaque.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/tables/protos/Table.proto"
+
+WorldInfo {
+  info [
+    "EFE-reach test scene for the kinova_controller agent."
+    "Single Kinova Gen3 7-DOF arm fixed to a desk in a small room."
+    "Robot is named P3Bot and the arm uses the Right_ motor prefix,"
+    "so WebotsBridge connects with the same configuration as the full P3Bot."
+  ]
+  title "arm_table — kinova_controller test"
+  basicTimeStep 16
+}
+Viewpoint {
+  orientation -0.29440530290233274 0.31498170797833874 0.9022815753754668 1.6060700920495876
+  position -0.14092320803619382 -3.728842281578395 3.556525641240779
+}
+TexturedBackground {
+}
+TexturedBackgroundLight {
+}
+RectangleArena {
+  translation 0 -0.43 0
+  floorSize 4 4
+  floorAppearance Parquetry {
+    type "light strip"
+  }
+  wallHeight 0.5
+}
+Robot {
+  translation -0.353159 -0.0234016 0.71
+  children [
+    KinovaGen3 {
+      name "kinova_arm_r"
+    }
+  ]
+  name "P3Bot"
+  controller "<extern>"
+  supervisor TRUE
+}
+DEF bottle WaterBottleOpaque {
+  translation 0.333078 -0.0407719 0.74
+  rotation 0.3832453252756712 0.8140256662817016 0.4364461424837856 0
+  name "bottle"
+}
+Table {
+  translation 0 0 -8.88182e-16
+}

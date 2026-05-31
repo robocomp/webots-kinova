@@ -1,0 +1,83 @@
+#VRML_SIM R2025a utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/floors/protos/RectangleArena.proto"
+EXTERNPROTO "../protos/P3Bot.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/tables/protos/Desk.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/appearances/protos/Parquetry.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/kitchen/utensils/protos/Glass.proto"
+EXTERNPROTO "../protos/KinovaGen3.proto"
+
+WorldInfo {
+  info [
+    "Simulation of the ROBOLAB P3Bot robot."
+  ]
+  title "ROBOLAB P3Bot"
+  basicTimeStep 16
+  contactProperties [
+    ContactProperties {
+      material1 "InteriorWheelMat"
+      coulombFriction [
+        0, 2, 0
+      ]
+      frictionRotation -0.785398 0
+      bounce 0
+      forceDependentSlip [
+        10, 0
+      ]
+    }
+    ContactProperties {
+      material1 "ExteriorWheelMat"
+      coulombFriction [
+        0, 2, 0
+      ]
+      frictionRotation 0.785398 0
+      bounce 0
+      forceDependentSlip [
+        10, 0
+      ]
+    }
+  ]
+}
+Viewpoint {
+  orientation 0.19044038781304057 -0.9210744557227462 -0.33963849267223173 5.81332058985342
+  position -1.7839411675345096 -0.24796405067268537 0.9670804904523459
+}
+TexturedBackground {
+}
+TexturedBackgroundLight {
+}
+RectangleArena {
+  floorSize 6 6
+  floorAppearance Parquetry {
+    type "light strip"
+  }
+  wallHeight 2
+}
+Glass {
+  hidden linearVelocity_0 3.820480421357124e-18 4.6969069123877727e-17 -6.220918682437631e-11
+  hidden angularVelocity_0 -1.2330471693278443e-15 -9.484978225598803e-17 1.3910823566568491e-16
+  translation 2 1.578913869862417e-17 0.7089833230039798
+  rotation 0.16774248693285096 0.9858308453348712 4.9637844289501e-05 1.931572984941838e-15
+}
+Glass {
+  hidden linearVelocity_0 -1.3178976985152989e-17 -1.4425044224576027e-17 -6.220916592731734e-11
+  hidden angularVelocity_0 4.742489112799413e-16 -5.110533926975133e-16 -1.8222646347397363e-16
+  translation -2 -3.5213833602723065e-18 0.7089833230039797
+  rotation 0.6525163186714686 -0.23867015039414155 -0.7192072115727651 5.128301350078649e-16
+  name "glass(1)"
+}
+Desk {
+  translation -2.3 0 0
+  rotation 0 0 -1 -5.307179586466759e-06
+  name "Table4"
+}
+Desk {
+  translation 2.3 0 0
+  rotation 0 0 1 -3.1415853071795863
+  name "Table2"
+}
+P3Bot {
+  
+}

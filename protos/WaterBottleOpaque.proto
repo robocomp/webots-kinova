@@ -1,0 +1,70 @@
+#VRML_SIM R2025a utf8
+# license: MIT
+# A drop-in replacement for Cyberbotics' WaterBottle that uses opaque PBR
+# geometry and therefore renders correctly into Webots' shadow map. The
+# upstream PROTO uses a textured IndexedFaceSet whose appearance pipeline
+# (texture-driven alpha, possibly transmission-like roughness) makes the
+# shadow renderer skip it; the simple Cylinder + opaque PBR here doesn't
+# have that problem.
+#
+# Same interface as WaterBottle (translation, rotation, name, mass) so the
+# world file only needs to change the type name.
+
+PROTO WaterBottleOpaque [
+  field SFVec3f    translation 0 0 0
+  field SFRotation rotation    0 0 1 0
+  field SFString   name        "water bottle"
+  field SFColor    color       0.10 0.55 0.85
+  field SFFloat    mass        0.5
+  field SFFloat    radius      0.034
+  field SFFloat    height      0.22
+]
+{
+  Solid {
+    translation IS translation
+    rotation    IS rotation
+    children [
+      Pose {
+        # Webots Cylinder geometry stands along +Y by default and is centred
+        # at the origin. Rotate so its axis is +Z (vertical), then lift by
+        # height/2 so the bottle sits with its base at the parent origin —
+        # matching the upstream WaterBottle's bottom-centred convention.
+        translation 0 0 %{= fields.height.value * 0.5 }%
+        rotation    1 0 0 1.5708
+        children [
+          Shape {
+            castShadows TRUE
+            appearance PBRAppearance {
+              baseColor    IS color
+              metalness    0.0
+              roughness    0.3
+              transparency 0.0
+            }
+            geometry Cylinder {
+              height IS height
+              radius IS radius
+            }
+          }
+        ]
+      }
+    ]
+    name  IS name
+    model "water bottle"
+    boundingObject Pose {
+      translation 0 0 %{= fields.height.value * 0.5 }%
+      rotation    1 0 0 1.5708
+      children [
+        Cylinder {
+          height IS height
+          radius IS radius
+        }
+      ]
+    }
+    %< if (fields.mass.value > 0) { >%
+      physics Physics {
+        density -1
+        mass IS mass
+      }
+    %< } >%
+  }
+}

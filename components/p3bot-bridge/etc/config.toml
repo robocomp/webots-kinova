@@ -1,0 +1,33 @@
+[Proxies]
+# This property is used by the clients to connect to IceStorm.
+TopicManager = "IceStorm/TopicManager:default -p 9999"
+
+# Proxies for publishes interfaces
+FullPoseEstimationPubPrefix = ""
+
+
+
+[Endpoints]
+# Endpoints for subscriptions interfaces
+JoystickAdapterTopic = "tcp -p 0"
+JoystickAdapterPrefix = ""
+
+# Endpoints for implements interfaces
+Camera360RGB = "tcp -p 0"
+CameraRGBDSimple = "tcp -p 0"
+KinovaArm = "tcp -p 0"
+KinovaArm1 = "tcp -p 0"
+Lidar3D = "tcp -p 0"
+OmniRobot = "tcp -p 0"
+Webots2Robocomp = "tcp -p 15010"
+
+
+[Period]
+Compute = 100
+Emergency = 500
+
+[Ice]
+Warn.Connections = "0"
+Trace.Network = "0"
+Trace.Protocol = "0"
+MessageSizeMax = "20004800"
