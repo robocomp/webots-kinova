@@ -50,13 +50,16 @@ PROTO WaterBottleOpaque [
     ]
     name  IS name
     model "water bottle"
+    # Bounding object kept as an upright Box rather than a rotated Cylinder
+    # because Webots can't reliably apply a Pose rotation to a Cylinder used
+    # as a collision shape — the inertia tensor ends up computed about the
+    # un-rotated local axes and the bottle tips over on contact. A Box's
+    # size axes are independent so no rotation is needed.
     boundingObject Pose {
       translation 0 0 %<= fields.height.value * 0.5 >%
-      rotation    1 0 0 1.5708
       children [
-        Cylinder {
-          height IS height
-          radius IS radius
+        Box {
+          size %<= 2.0 * fields.radius.value >% %<= 2.0 * fields.radius.value >% %<= fields.height.value >%
         }
       ]
     }
