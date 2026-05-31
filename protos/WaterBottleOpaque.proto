@@ -25,12 +25,13 @@ PROTO WaterBottleOpaque [
     rotation    IS rotation
     children [
       Pose {
-        # Webots Cylinder geometry stands along +Y by default and is centred
-        # at the origin. Rotate so its axis is +Z (vertical), then lift by
-        # height/2 so the bottle sits with its base at the parent origin —
-        # matching the upstream WaterBottle's bottom-centred convention.
+        # Webots R2025a's Cylinder geometry already aligns its central axis
+        # with the world up direction in ENU mode, so no rotation is needed —
+        # only a translation by height/2 to put the bottle's base at the
+        # parent (Solid) origin (matches WaterBottle's bottom-centred
+        # convention so the world file's translation lands the base on the
+        # table top).
         translation 0 0 %<= fields.height.value * 0.5 >%
-        rotation    1 0 0 1.5708
         children [
           Shape {
             castShadows TRUE
