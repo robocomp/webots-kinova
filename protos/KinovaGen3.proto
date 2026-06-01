@@ -255,7 +255,12 @@ PROTO KinovaGen3 [
                                                           maxVelocity 0.1
                                                         }
                                                       ]
-                                                      endPoint Solid {
+                                                      # Fingertip force sensor (matches the real robot's per-tip
+                                                      # force sensing). force-3d → 3-axis contact force on the
+                                                      # finger box; the bridge reads getValues() into TGripper.
+                                                      endPoint TouchSensor {
+                                                        type "force-3d"
+                                                        lookupTable []
                                                         translation 0.005 0 -0.19 # Ajustado para que sobresalga de la muñeca
                                                         children [
                                                           # Simple Box visual — Robotiq mesh import was
@@ -293,14 +298,24 @@ PROTO KinovaGen3 [
                                                           maxVelocity 0.1
                                                         }
                                                       ]
-                                                      endPoint Solid {
+                                                      endPoint TouchSensor {
+                                                        type "force-3d"
+                                                        lookupTable []
                                                         translation -0.005 0 -0.19
                                                         children [
                                                           # Independent Shape (do NOT USE Finger_Shape) —
                                                           # Webots' renderer drops a DEF Shape if it
                                                           # appears under a second parent transform.
+                                                          # Distinct red appearance (temporary, for
+                                                          # debugging) so the left and right fingers can
+                                                          # be told apart visually — verifies that both
+                                                          # sliders exist and move on setGripperPos.
                                                           Shape {
-                                                            appearance USE base_link_material
+                                                            appearance PBRAppearance {
+                                                              baseColor 0.85 0.15 0.15
+                                                              roughness 1.0
+                                                              metalness 0
+                                                            }
                                                             geometry DEF basic_finger_left Box { size 0.01 0.02 0.045 }
                                                           }
                                                         ]
