@@ -18,6 +18,7 @@
  */
 #include "specificworker.h"
 
+#include <cmath>
 #include "rapplication/rapplication.h"
 
 #pragma region ROBOCOMP_METHODS
@@ -91,6 +92,10 @@ void SpecificWorker::initialize()
         }
 
         kinovaArmRSensors[i]->enable(this->getPeriod("Compute"));
+        // Joint torque feedback — the raw signal the controller turns into a
+        // 6-axis wrist wrench via w = (Jᵀ)⁺·τ (matches how the Gen3 estimates
+        // its tool F/T). Exposed per joint through TJoint.torque in getJoints().
+        kinovaArmRMotors[i]->enableTorqueFeedback(this->getPeriod("Compute"));
     }
 
     // // Left Kinova Arm motors and sensors initialization.
@@ -130,7 +135,15 @@ void SpecificWorker::initialize()
     // accelerometer = robot->getAccelerometer("accelerometer");
     // if(accelerometer) accelerometer->enable(this->getPeriod("Compute"));
 
-    // Grasp initializacion
+    // Gripper slider limits. These match the PROTO defaults declared in
+    // protos/KinovaGen3.proto (armsMinPosition = 0, armsMaxPosition = 0.0425):
+    //   .first  = fully-closed slider position (m, 0)
+    //   .second = fully-open  slider position (m, 0.0425 ≈ 42.5 mm)
+    // The supervisor lookup below would be the principled way to read these
+    // off the live node, but it requires the arm to carry a DEF, which our
+    // world doesn't currently provide. Hard-code matches PROTO defaults.
+    armsMinMaxPosition.first  = 0.0f;
+    armsMinMaxPosition.second = 0.0425f;
     // armsMinMaxPosition.first = robot->getFromDef("KINOVA_ARM_L")->getField("armsMinPosition")->getSFFloat();
     // armsMinMaxPosition.second = robot->getFromDef("KINOVA_ARM_L")->getField("armsMaxPosition")->getSFFloat();
 
@@ -150,6 +163,22 @@ void SpecificWorker::initialize()
 
     right_hand.first->setAvailableForce(40.0); // Fuerza suficiente para sostener, no para romper
     right_hand.second->setAvailableForce(40.0);
+    // Grip-force feedback from the finger linear motors: the force the motor
+    // exerts, which spikes when a finger is blocked by a grasped object. More
+    // robust than the fingertip TouchSensor, which can net to ~0 in static
+    // equilibrium (the slider joint reacts the contact). For a LinearMotor,
+    // getTorqueFeedback() returns the linear force in N.
+    right_hand.first->enableTorqueFeedback(this->getPeriod("Compute"));
+    right_hand.second->enableTorqueFeedback(this->getPeriod("Compute"));
+
+    // Fingertip force sensors (force-3d TouchSensors declared on each finger
+    // box in the PROTO). Device name = the finger Solid name.
+    finger_force_right = robot->getTouchSensor("Right_Hand_Finger_Right");
+    finger_force_left  = robot->getTouchSensor("Right_Hand_Finger_Left");
+    if (finger_force_right) finger_force_right->enable(this->getPeriod("Compute"));
+    if (finger_force_left)  finger_force_left->enable(this->getPeriod("Compute"));
+    if (not finger_force_right or not finger_force_left)
+        std::cerr << "WARN: fingertip force sensor(s) not found — getGripperState forces will be 0\n";
 
     KinovaArm_setGripperPos(0);
     // Rest pose for the stand-alone arm-on-desk test world (arm_table.wbt).
@@ -569,8 +598,29 @@ RoboCompKinovaArm::TPose SpecificWorker::KinovaArm_getCenterOfTool(RoboCompKinov
 RoboCompKinovaArm::TGripper SpecificWorker::KinovaArm_getGripperState()
 {
 	RoboCompKinovaArm::TGripper ret{};
-	//implementCODE
+	// |force| from each fingertip force-3d TouchSensor (N). With one sensor per
+	// finger the finger and tip forces are the same value.
+	const auto force_mag = [](webots::TouchSensor* ts) -> float
+	{
+		if (not ts) return 0.0f;
+		const double* v = ts->getValues();              // {Fx, Fy, Fz}
+		if (not v) return 0.0f;
+		return static_cast<float>(std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]));
+	};
+	// Tactile/tip force from the fingertip TouchSensors (real-robot-like).
+	const float fr_tip = force_mag(finger_force_right);
+	const float fl_tip = force_mag(finger_force_left);
+	// Grip force from the finger motor force feedback (robust contact signal).
+	const float fr_mot = right_hand.first  ? std::abs(static_cast<float>(right_hand.first->getTorqueFeedback()))  : 0.0f;
+	const float fl_mot = right_hand.second ? std::abs(static_cast<float>(right_hand.second->getTorqueFeedback())) : 0.0f;
+	ret.rforce    = fr_mot;   ret.lforce    = fl_mot;   // grip force (motor)
+	ret.rtipforce = fr_tip;   ret.ltipforce = fl_tip;   // tip force (tactile)
 
+	// Diagnostic: compare both sources, throttled.
+	static int dbg = 0;
+	if (dbg++ % 20 == 0)
+		std::cout << "[gripper-force] tip(touch) R=" << fr_tip << " L=" << fl_tip
+		          << "  grip(motor) R=" << fr_mot << " L=" << fl_mot << std::endl;
 	return ret;
 }
 
@@ -610,9 +660,15 @@ void SpecificWorker::KinovaArm_setCenterOfTool(RoboCompKinovaArm::TPose pose, Ro
 
 bool SpecificWorker::KinovaArm_setGripperPos(float pos)
 {
-    pos = 1 - std::clamp(pos, 0.0f, 1.0f);
-
-    float target = armsMinMaxPosition.first + pos * (armsMinMaxPosition.second - armsMinMaxPosition.first);     // Convertimos de [0,1] a [minPosition,maxPosition]
+    // Convention (matches the KinovaArm.idsl contract used by the
+    // active-inference controller): pos ∈ [0, 1] with
+    //   pos = 0 → fully closed (slider at armsMinPosition)
+    //   pos = 1 → fully open   (slider at armsMaxPosition).
+    // Earlier code inverted this — that produced "1 = closed" silently
+    // because armsMinMaxPosition was zero-initialised and the inversion
+    // hid the bug; now both are fixed together.
+    pos = std::clamp(pos, 0.0f, 1.0f);
+    float target = armsMinMaxPosition.first + pos * (armsMinMaxPosition.second - armsMinMaxPosition.first);     // [0,1] → [minPosition, maxPosition]
 
     // Pull the commanded position 1 mm inside the slider's hard limits.
     // Commanding exactly at minStop or maxStop makes the motor integrate
@@ -625,6 +681,19 @@ bool SpecificWorker::KinovaArm_setGripperPos(float pos)
 
     right_hand.first->setPosition(target);
     right_hand.second->setPosition(target);
+
+    // One-shot debug: prove the call lands and report the target written
+    // to both motors. Avoids spamming at the cyclic rate while still being
+    // visible on stdout the first time the controller asks.
+    static bool first_setgripper_logged = false;
+    if (not first_setgripper_logged)
+    {
+        std::cout << "[gripper] first setGripperPos call: pos_in_after_clamp="
+                  << pos << "  target_slider=" << target
+                  << "  range=[" << armsMinMaxPosition.first
+                  << ", " << armsMinMaxPosition.second << "]" << std::endl;
+        first_setgripper_logged = true;
+    }
 
     return true;
 }
@@ -843,19 +912,20 @@ RoboCompKinovaArm::TJoints SpecificWorker::getJoints(std::vector<webots::Positio
         {
             joint.angle = armSensors[i]->getValue();
             joint.velocity = armMotors[i]->getVelocity();
+            joint.torque = static_cast<float>(armMotors[i]->getTorqueFeedback());
         }
         else
         {
             joint.angle = 0.0f;
             joint.velocity = 0.0f;
-            
+            joint.torque = 0.0f;
+
             {
                 std::cerr << "Sensor o motor nulo en la articulación " << i << std::endl;
             }
         }
-        
+
         // Valores por defecto
-        joint.torque = 0.0f;
         joint.current = 0.0f;
         joint.voltage = 0.0f;
         joint.motorTemperature = 0.0f;

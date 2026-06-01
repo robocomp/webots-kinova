@@ -42,6 +42,7 @@
 #include <webots/Lidar.hpp>
 #include <webots/Accelerometer.hpp>
 #include <webots/RangeFinder.hpp>
+#include <webots/TouchSensor.hpp>
 #include <webots/Device.hpp>
 #include <opencv2/opencv.hpp>
 #include <opencv2/core.hpp>
@@ -235,6 +236,11 @@ private:
 
 	std::pair<webots::Motor*, webots::Motor*> left_hand;
 	std::pair<webots::Motor*, webots::Motor*> right_hand;
+
+	// Fingertip force sensors (force-3d TouchSensors on each finger box in the
+	// PROTO). Read into TGripper.{lforce,rforce,...} by getGripperState.
+	webots::TouchSensor* finger_force_right = nullptr;
+	webots::TouchSensor* finger_force_left  = nullptr;
 
     /**
      * Other variables
