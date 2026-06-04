@@ -18,7 +18,9 @@
  */
 #include "specificworker.h"
 
+#include <array>
 #include <cmath>
+#include <fstream>
 #include "rapplication/rapplication.h"
 
 #pragma region ROBOCOMP_METHODS
@@ -65,7 +67,14 @@ void SpecificWorker::initialize()
     std::cout << "Initialize worker" << std::endl;
 
     robot = new webots::Supervisor();
+    if(!robot) 
+    {
+        
+        std::cerr << "Error: No se pudo crear el Supervisor de Webots." << std::endl;
+        return;
+    }
     robotNode = robot->getSelf();
+
 
     // Base motors and sensors initialization.
     // const char *motorNames[4] = {"wheel1", "wheel2", "wheel3", "wheel4"};
@@ -161,15 +170,27 @@ void SpecificWorker::initialize()
     right_hand.first = robot->getMotor("Right_Hand_LinearMotor_Right");
     right_hand.second = robot->getMotor("Right_Hand_LinearMotor_Left");
 
-    right_hand.first->setAvailableForce(40.0); // Fuerza suficiente para sostener, no para romper
-    right_hand.second->setAvailableForce(40.0);
-    // Grip-force feedback from the finger linear motors: the force the motor
-    // exerts, which spikes when a finger is blocked by a grasped object. More
-    // robust than the fingertip TouchSensor, which can net to ~0 in static
-    // equilibrium (the slider joint reacts the contact). For a LinearMotor,
-    // getTorqueFeedback() returns the linear force in N.
-    right_hand.first->enableTorqueFeedback(this->getPeriod("Compute"));
-    right_hand.second->enableTorqueFeedback(this->getPeriod("Compute"));
+    // Guard: a wrong Webots instance / missing gripper would make getMotor return
+    // null and the calls below segfault silently right after "Initialize worker".
+    // Fail loudly with the device name instead.
+    if (not right_hand.first or not right_hand.second)
+    {
+        std::cerr << "FATAL: gripper LinearMotors not found "
+                     "(Right_Hand_LinearMotor_Right/Left) — is the bridge bound to the "
+                     "Kinova arm world? Skipping gripper init.\n";
+    }
+    else
+    {
+        right_hand.first->setAvailableForce(40.0); // Fuerza suficiente para sostener, no para romper
+        right_hand.second->setAvailableForce(40.0);
+        // Grip-force feedback from the finger linear motors: the force the motor
+        // exerts, which spikes when a finger is blocked by a grasped object. More
+        // robust than the fingertip TouchSensor, which can net to ~0 in static
+        // equilibrium (the slider joint reacts the contact). For a LinearMotor,
+        // getTorqueFeedback() returns the linear force in N.
+        right_hand.first->enableTorqueFeedback(this->getPeriod("Compute"));
+        right_hand.second->enableTorqueFeedback(this->getPeriod("Compute"));
+    }
 
     // Fingertip force sensors (force-3d TouchSensors declared on each finger
     // box in the PROTO). Device name = the finger Solid name.
@@ -180,20 +201,25 @@ void SpecificWorker::initialize()
     if (not finger_force_right or not finger_force_left)
         std::cerr << "WARN: fingertip force sensor(s) not found — getGripperState forces will be 0\n";
 
-    KinovaArm_setGripperPos(0);
-    // Rest pose for the stand-alone arm-on-desk test world (arm_table.wbt).
-    // Joint angles (rad) for joint_1..joint_7. With the arm base mounted
-    // upright on the desk (Z up in world frame), this gives:
-    //   shoulder mildly forward (≈17°), elbow bent (≈86°) so the elbow
-    //   rises above the shoulder, wrist pitched (≈80°) so the tool faces
-    //   straight down. Pinocchio FK at this q places tool_frame at
-    //   (+0.41, −0.025, +0.33) m in the arm-base frame — i.e. 41 cm in
-    //   front of the base, 33 cm above it — with approach direction
-    //   (~0, 0, −1). Plenty of clearance above the desk for the
-    //   EFE-gradient controller to take over.
-    KinovaArm_moveJointsWithAngle(RoboCompKinovaArm::TJointAngles{RoboCompKinovaArm::Angles{
-        0.0, 0.3, 0.0, 1.5, 0.0, 1.4, 0.0
-    }});
+    KinovaArm_setGripperPos(1);   // start fully OPEN (0=closed, 1=open) — ready to grasp
+    // Heads-up if the world has baked the arm pose into link rotations (see the helper):
+    // a baked world makes Webots disagree with the URDF/Pinocchio model and is the source
+    // of "the pose looks wrong" confusion.
+    warn_if_world_pose_baked();
+
+    // Startup pose: drive the arm to the controller's rest pose — the last committed
+    // "elbow outside, hand forward" posture, kept in sync with Controller.rest_pose in
+    // kinova_controller/etc/config.toml. With an un-baked world (joints load at 0 = the
+    // design pose, matching the URDF) teleport_arm_to sets the joints there instantly
+    // with no swept collision; moveBothArmsWithAngle then pins the motors to hold it.
+    // Decoded from the world's (now-removed) baked hidden rotations — i.e. the exact
+    // pose the arm showed on reset, expressed in clean joint space. Trustworthy because
+    // it was measured from the world itself, not tuned against a baked offset. Keep in
+    // sync with Controller.rest_pose in kinova_controller/etc/config.toml.
+    const std::array<double, 7> rest_pose = {0.30, 0.80, 1.50, -2.101, 0.651, -1.02, 3.141};
+    const RoboCompKinovaArm::Angles rest_angles(rest_pose.begin(), rest_pose.end());
+    teleport_arm_to(rest_angles);
+    moveBothArmsWithAngle(rest_angles, kinovaArmRMotors);
     // KinovaArm1_setGripperPos(0);
     // KinovaArm1_moveJointsWithAngle(RoboCompKinovaArm::TJointAngles{RoboCompKinovaArm::Angles{-0.698, -2.0944, -1.047, -2.2689, 0.3491, -1.1345, 1.4835}});
 
@@ -221,7 +247,7 @@ void SpecificWorker::compute()
     // if(zedRangeFinder && zed) receiving_cameraRGBD(zed, zedRangeFinder, zedImage, now);
 
     robot->step(this->getPeriod("Compute"));
-   
+
     fps.print("FPS:");
 }
 
@@ -667,6 +693,8 @@ bool SpecificWorker::KinovaArm_setGripperPos(float pos)
     // Earlier code inverted this — that produced "1 = closed" silently
     // because armsMinMaxPosition was zero-initialised and the inversion
     // hid the bug; now both are fixed together.
+    if (not right_hand.first or not right_hand.second)
+        return false;                 // gripper motors absent (see initialize guard)
     pos = std::clamp(pos, 0.0f, 1.0f);
     float target = armsMinMaxPosition.first + pos * (armsMinMaxPosition.second - armsMinMaxPosition.first);     // [0,1] → [minPosition, maxPosition]
 
@@ -867,6 +895,64 @@ void SpecificWorker::moveBothArmsWithAngle(const RoboCompKinovaArm::Angles &join
         }
     }
 }
+
+void SpecificWorker::warn_if_world_pose_baked()
+{
+    // Saving a world in Webots with the arm posed bakes the pose into the per-link
+    // "hidden rotation_N" fields and ZEROES the joint coordinates. The joint sensors
+    // then read ~0 while the arm looks posed, so Webots no longer matches the URDF /
+    // Pinocchio model the controller uses (q=0 here != q=0 in the URDF) — every
+    // joint-space pose then looks offset. Scan the live .wbt and warn loudly so the
+    // user un-bakes it (remove hidden rotation_1..7 / translation_1..7) rather than
+    // chasing a phantom calibration error. Gripper sliders (rotation_8/9) are exempt.
+    const std::string world_path = robot->getWorldPath();
+    std::ifstream wf(world_path);
+    if (not wf)
+        return;
+    int baked = 0;
+    std::string line;
+    while (std::getline(wf, line))
+    {
+        const auto p = line.find("hidden rotation_");
+        if (p == std::string::npos)
+            continue;
+        const char j = line[p + std::string("hidden rotation_").size()];
+        if (j >= '1' and j <= '7')   // arm joints only
+            ++baked;
+    }
+    if (baked > 0)
+        std::cerr << "\n*** WARN: world '" << world_path << "' has " << baked
+                  << " baked arm 'hidden rotation_*' field(s). ***\n"
+                     "    The arm pose was saved into link rotations with the joint angles\n"
+                     "    zeroed, so Webots will NOT match the URDF/Pinocchio model: joint\n"
+                     "    sensors read ~0 while the arm looks posed, and every commanded\n"
+                     "    pose comes out offset. Remove the hidden rotation_1..7 /\n"
+                     "    translation_1..7 lines from the .wbt (do not re-save it posed).\n\n";
+}
+
+void SpecificWorker::teleport_arm_to(const RoboCompKinovaArm::Angles &jointAngles)
+{
+    // Set each arm joint coordinate directly through the Supervisor. Unlike
+    // moveBothArmsWithAngle (which drives the motors and sweeps a path),
+    // setJointPosition snaps the joint with NO dynamics, so it cannot collide on
+    // the way and unwinds wound-up continuous joints instantly. getFromDevice
+    // gives the motor's Node; its parent is the HingeJoint that setJointPosition
+    // acts on.
+    const size_t loop_limit = std::min(jointAngles.size(), kinovaArmRMotors.size());
+    for (size_t i = 0; i < loop_limit; ++i)
+    {
+        if (not kinovaArmRMotors[i])
+            continue;
+        webots::Node *motor_node = robot->getFromDevice(kinovaArmRMotors[i]);
+        webots::Node *joint_node = motor_node ? motor_node->getParentNode() : nullptr;
+        if (joint_node)
+            joint_node->setJointPosition(jointAngles[i]);
+        else
+            std::cerr << "WARN: could not reach HingeJoint for arm motor " << i
+                      << " — that joint will not teleport\n";
+    }
+}
+
 void SpecificWorker::moveBothArmsWithSpeed(const RoboCompKinovaArm::Speeds &jointSpeeds,
                                          std::vector<webots::Motor *> &armMotors) 
 {
@@ -1032,6 +1118,20 @@ static RoboCompWebots2Robocomp::Quaternion axisAngleToQuaternion(const webots::F
     return q;
 }
 
+// Inverse of axisAngleToQuaternion: a unit quaternion → Webots SFRotation
+// {ax, ay, az, angle}. Returns the identity axis (0,1,0) at angle 0 when the
+// quaternion has no rotation, so setSFRotation always gets a valid unit axis.
+static std::array<double, 4> quaternionToAxisAngle(const RoboCompWebots2Robocomp::Quaternion &q)
+{
+    double w = q.w, x = q.x, y = q.y, z = q.z;
+    if (const double n = std::sqrt(w*w + x*x + y*y + z*z); n > 1e-9)
+    { w /= n; x /= n; y /= n; z /= n; }
+    const double angle = 2.0 * std::acos(std::clamp(w, -1.0, 1.0));
+    const double s = std::sqrt(std::max(0.0, 1.0 - w*w));
+    if (s < 1e-6) return {0.0, 1.0, 0.0, 0.0};   // ~no rotation → arbitrary unit axis
+    return {x/s, y/s, z/s, angle};
+}
+
 webots::Node* SpecificWorker::find_scene_node(const std::string& key)
 {
     if (auto it = scene_node_cache_.find(key); it != scene_node_cache_.end())
@@ -1086,6 +1186,36 @@ RoboCompWebots2Robocomp::ObjectPose SpecificWorker::Webots2Robocomp_getObjectPos
     return ret;
 }
 
+void SpecificWorker::Webots2Robocomp_setObjectPose(std::string DEF, RoboCompWebots2Robocomp::ObjectPose pose)
+{
+    // Teleport a supervised scene node to a new pose (mm + quaternion, matching
+    // getObjectPose's convention). Used to re-stand a toppled/fallen object so
+    // experiments continue without a manual world reset. resetPhysics() is
+    // essential: it zeroes the body's linear/angular velocity so a re-placed
+    // object settles instead of carrying its fall velocity.
+    webots::Node *object_node = find_scene_node(DEF);
+    if (object_node == nullptr) {
+        std::cout << "setObjectPose: object '" << DEF << "' not found" << std::endl;
+        return;
+    }
+    webots::Field *t = object_node->getField("translation");
+    webots::Field *r = object_node->getField("rotation");
+    if (t == nullptr or r == nullptr) {
+        std::cout << "setObjectPose: '" << DEF << "' has no translation/rotation" << std::endl;
+        return;
+    }
+    const double xyz[3] = {                       // mm → m
+        pose.position.x / 1000.0,
+        pose.position.y / 1000.0,
+        pose.position.z / 1000.0,
+    };
+    t->setSFVec3f(xyz);
+    const auto aa = quaternionToAxisAngle(pose.orientation);
+    const double rot[4] = {aa[0], aa[1], aa[2], aa[3]};
+    r->setSFRotation(rot);
+    object_node->resetPhysics();                  // clear residual velocity
+}
+
 void SpecificWorker::Webots2Robocomp_resetWebots()
 {
     // p3bot scene has no reset hook yet.
@@ -1101,6 +1231,20 @@ void SpecificWorker::Webots2Robocomp_setPathToHuman(int humanId, RoboCompGridder
 {
     // p3bot scene has no humans-as-supervised-nodes yet.
     (void) humanId; (void) path;
+}
+
+void SpecificWorker::Webots2Robocomp_setArmJointsInstant(RoboCompKinovaArm::TJointAngles angles)
+{
+    // Sim-only recovery teleport (no hardware analog — that is why it lives on the
+    // supervisor interface, not KinovaArm). A controller running a long unattended
+    // round calls this when it detects the arm jammed, to snap it back to a safe
+    // pose WITHOUT sweeping the gripper through the table. teleport_arm_to sets the
+    // joint coordinates directly (no dynamics); then pin the motors at the same
+    // angles so they hold it once the controller's velocity commands stop.
+    teleport_arm_to(angles.jointAngles);
+    moveBothArmsWithAngle(angles.jointAngles, kinovaArmRMotors);
+    std::cout << "[recovery] setArmJointsInstant: arm teleported to ["
+              << angles.jointAngles.size() << " joints]" << std::endl;
 }
 
 #pragma endregion Webots2Robocomp

@@ -166,9 +166,11 @@ public:
     // # Webots2Robocomp interface   #
     // ###############################
     RoboCompWebots2Robocomp::ObjectPose Webots2Robocomp_getObjectPose(std::string DEF);
+    void Webots2Robocomp_setObjectPose(std::string DEF, RoboCompWebots2Robocomp::ObjectPose pose);
     void Webots2Robocomp_resetWebots();
     void Webots2Robocomp_setDoorAngle(float angle);
     void Webots2Robocomp_setPathToHuman(int humanId, RoboCompGridder::TPath path);
+    void Webots2Robocomp_setArmJointsInstant(RoboCompKinovaArm::TJointAngles angles);
 
     // Resolve a scene node by DEF first, falling back to a top-level "name"
     // field scan so world authors don't need to remember to add a DEF.
@@ -294,6 +296,12 @@ private:
      */
 
     void moveBothArmsWithAngle(const RoboCompKinovaArm::Angles &jointAngles, std::vector<webots::Motor *> &armMotors);
+    // Supervisor teleport: set each arm joint coordinate directly (no dynamics, no
+    // swept collision). Shared by initialize() and Webots2Robocomp_setArmJointsInstant.
+    void teleport_arm_to(const RoboCompKinovaArm::Angles &jointAngles);
+    // Warn at startup if the live world has the arm pose baked into hidden link
+    // rotations (saved posed), which desyncs Webots from the URDF/Pinocchio model.
+    void warn_if_world_pose_baked();
     void moveBothArmsWithSpeed(const RoboCompKinovaArm::Speeds &jointSpeeds, std::vector<webots::Motor *> &armMotors);
 
     void printNotImplementedWarningMessage(const string functionName);

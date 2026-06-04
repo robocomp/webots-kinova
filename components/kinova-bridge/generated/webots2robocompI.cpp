@@ -32,8 +32,16 @@ Webots2RobocompI::Webots2RobocompI(GenericWorker *_worker, const size_t id): wor
 		[this](auto &a) {if (worker != nullptr) worker->Webots2Robocomp_setDoorAngle(a); else throw std::runtime_error("Worker is null");}
 	};
 
+	setObjectPoseHandlers = {
+		[this](auto &a, auto &b) {if (worker != nullptr) worker->Webots2Robocomp_setObjectPose(a, b); else throw std::runtime_error("Worker is null");}
+	};
+
 	setPathToHumanHandlers = {
 		[this](auto &a, auto &b) {if (worker != nullptr) worker->Webots2Robocomp_setPathToHuman(a, b); else throw std::runtime_error("Worker is null");}
+	};
+
+	setArmJointsInstantHandlers = {
+		[this](auto &a) {if (worker != nullptr) worker->Webots2Robocomp_setArmJointsInstant(a); else throw std::runtime_error("Worker is null");}
 	};
 
 }
@@ -78,6 +86,18 @@ void Webots2RobocompI::setDoorAngle(float angle, const Ice::Current&)
 	setDoorAngleHandlers.at(id)(angle);
 }
 
+void Webots2RobocompI::setObjectPose(std::string DEF, RoboCompWebots2Robocomp::ObjectPose pose, const Ice::Current&)
+{
+    if (!worker)
+        throw std::runtime_error("Worker is null");
+        
+    #ifdef HIBERNATION_ENABLED
+		worker->hibernationTick();
+	#endif
+    
+	setObjectPoseHandlers.at(id)(DEF, pose);
+}
+
 void Webots2RobocompI::setPathToHuman(int humanId, RoboCompGridder::TPath path, const Ice::Current&)
 {
     if (!worker)
@@ -88,4 +108,16 @@ void Webots2RobocompI::setPathToHuman(int humanId, RoboCompGridder::TPath path, 
 	#endif
     
 	setPathToHumanHandlers.at(id)(humanId, path);
+}
+
+void Webots2RobocompI::setArmJointsInstant(RoboCompKinovaArm::TJointAngles angles, const Ice::Current&)
+{
+    if (!worker)
+        throw std::runtime_error("Worker is null");
+
+    #ifdef HIBERNATION_ENABLED
+		worker->hibernationTick();
+	#endif
+
+	setArmJointsInstantHandlers.at(id)(angles);
 }

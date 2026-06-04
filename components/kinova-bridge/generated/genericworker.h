@@ -116,7 +116,9 @@ public:
 	virtual RoboCompWebots2Robocomp::ObjectPose Webots2Robocomp_getObjectPose(std::string DEF) = 0;
 	virtual void Webots2Robocomp_resetWebots() = 0;
 	virtual void Webots2Robocomp_setDoorAngle(float angle) = 0;
+	virtual void Webots2Robocomp_setObjectPose(std::string DEF, RoboCompWebots2Robocomp::ObjectPose pose) = 0;
 	virtual void Webots2Robocomp_setPathToHuman(int humanId, RoboCompGridder::TPath path) = 0;
+	virtual void Webots2Robocomp_setArmJointsInstant(RoboCompKinovaArm::TJointAngles angles) = 0;
 
 	virtual void JoystickAdapter_sendData (RoboCompJoystickAdapter::TData data) = 0;
 
