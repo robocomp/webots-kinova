@@ -1,0 +1,75 @@
+#VRML_SIM R2025a utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/floors/protos/RectangleArena.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/appearances/protos/Parquetry.proto"
+EXTERNPROTO "../protos/KinovaGen3.proto"
+EXTERNPROTO "../protos/WaterBottleOpaque.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/tables/protos/Table.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/solids/protos/SolidPipe.proto"
+
+WorldInfo {
+  info [
+    "EFE-reach test scene for the kinova_controller agent."
+    "Single Kinova Gen3 7-DOF arm fixed to a desk in a small room."
+    "Robot is named P3Bot and the arm uses the Right_ motor prefix,"
+    "so WebotsBridge connects with the same configuration as the full P3Bot."
+  ]
+  title "arm_table — kinova_controller test"
+  basicTimeStep 16
+}
+Viewpoint {
+  orientation -0.24698019481917607 0.21031979117992564 0.9459209104386658 1.7854164624170408
+  position -0.01977719150130327 -2.6275341804534933 1.859631925801961
+}
+TexturedBackground {
+}
+TexturedBackgroundLight {
+}
+RectangleArena {
+  translation 0 -0.44 0
+  floorSize 4 4
+  floorAppearance Parquetry {
+    type "light strip"
+  }
+  wallHeight 0.5
+}
+Robot {
+  translation -0.643159 -0.193402 0.42
+  rotation -2.39745e-09 1.03407e-06 -1 1.5708
+  children [
+    KinovaGen3 {
+    
+      name "kinova_arm_r"
+    }
+  ]
+  name "P3Bot"
+  controller "<extern>"
+  supervisor TRUE
+}
+DEF bottle WaterBottleOpaque {
+  hidden linearVelocity_0 -9.633625346047838e-18 -1.209642815753876e-17 2.607229777077235e-15
+  hidden angularVelocity_0 3.571176862912987e-16 -2.766132331679886e-16 -3.7938418842762925e-17
+  translation -0.011603406877781358 -0.28462040557599383 0.7398037999999998
+  rotation 1.844632588470015e-14 2.4728924766146653e-14 -1 0.001225126339171443
+  name "bottle"
+  radius 0.028
+  height 0.2
+}
+SolidPipe {
+  translation -0.64477 -0.056064 0.6
+  height 1.4
+  radius 0.03
+  appearance PBRAppearance {
+    baseColorMap ImageTexture {
+      url [
+        ""
+      ]
+    }
+    roughness 0.5
+    metalness 0
+  }
+}
+Table {
+}
