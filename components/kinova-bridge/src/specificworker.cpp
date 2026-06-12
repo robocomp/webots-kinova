@@ -18,6 +18,7 @@
  */
 #include "specificworker.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <fstream>
@@ -201,6 +202,16 @@ void SpecificWorker::initialize()
     if (not finger_force_right or not finger_force_left)
         std::cerr << "WARN: fingertip force sensor(s) not found — getGripperState forces will be 0\n";
 
+    // Distal-tip bumper sensors (PROTO: "bumper"-type TouchSensors at each finger tip).
+    // Optional — null-safe if the world hasn't been reloaded with them yet.
+    finger_tip_right = robot->getTouchSensor("Right_Hand_Tip_Right");
+    finger_tip_left  = robot->getTouchSensor("Right_Hand_Tip_Left");
+    if (finger_tip_right) finger_tip_right->enable(this->getPeriod("Compute"));
+    if (finger_tip_left)  finger_tip_left->enable(this->getPeriod("Compute"));
+    if (not finger_tip_right or not finger_tip_left)
+        std::cerr << "INFO: tip bumper sensor(s) not found — reload the world with the new PROTO; "
+                     "TGripper.{l,r}tipcontact will read false until then\n";
+
     KinovaArm_setGripperPos(1);   // start fully OPEN (0=closed, 1=open) — ready to grasp
     // Heads-up if the world has baked the arm pose into link rotations (see the helper):
     // a baked world makes Webots disagree with the URDF/Pinocchio model and is the source
@@ -216,7 +227,7 @@ void SpecificWorker::initialize()
     // pose the arm showed on reset, expressed in clean joint space. Trustworthy because
     // it was measured from the world itself, not tuned against a baked offset. Keep in
     // sync with Controller.rest_pose in kinova_controller/etc/config.toml.
-    const std::array<double, 7> rest_pose = {0.30, 0.80, 1.50, -2.101, 0.651, -1.02, 3.141};
+    const std::array<double, 7> rest_pose = {1.5705, 0.0, 3.1415, 1.0, 0.0, 1.65, -1.5705};
     const RoboCompKinovaArm::Angles rest_angles(rest_pose.begin(), rest_pose.end());
     teleport_arm_to(rest_angles);
     moveBothArmsWithAngle(rest_angles, kinovaArmRMotors);
@@ -238,17 +249,63 @@ void SpecificWorker::initialize()
 
 void SpecificWorker::compute()
 {
-    
-    //double now = robot->getTime() * 1000;
-
-    //if(robot) receiving_robotSpeed(robot, now);
-    // if(camera360_1 && camera360_2) receiving_camera360Data(camera360_1, camera360_2, now);
-    // if(heliosLidar) receiving_lidarData(heliosLidar, double_buffer_helios,  helios_delay_queue, now);
-    // if(zedRangeFinder && zed) receiving_cameraRGBD(zed, zedRangeFinder, zedImage, now);
+    // All Webots access happens HERE, on the one thread Webots allows. The Ice servants only
+    // touch the mutex-protected buffers, so they never block on the step. Order matters:
+    // apply commands → step (they take effect + physics advances) → read the post-step state.
+    apply_pending_commands();
 
     robot->step(this->getPeriod("Compute"));
 
+    publish_webots_state();
+
     fps.print("FPS:");
+}
+
+// Drain the pending-command buffers (written by Ice servants) and apply them to Webots.
+void SpecificWorker::apply_pending_commands()
+{
+    std::optional<std::vector<float>> speeds, angles, teleport;
+    std::optional<float> gripper;
+    std::optional<std::pair<std::string, RoboCompWebots2Robocomp::ObjectPose>> set_pose;
+    {
+        std::lock_guard<std::mutex> lk(io_mutex_);
+        speeds.swap(pending_speeds_);
+        angles.swap(pending_angles_);
+        gripper.swap(pending_gripper_);
+        teleport.swap(pending_teleport_);
+        set_pose.swap(pending_set_pose_);
+    }
+    // A velocity command and an angle command are mutually exclusive in practice (the
+    // controller sends speeds while tracking, angles while homing); if both somehow queued,
+    // the explicit teleport/angle wins as the safer "go to this pose".
+    if (speeds)   moveBothArmsWithSpeed(*speeds, kinovaArmRMotors);
+    if (angles)   moveBothArmsWithAngle(*angles, kinovaArmRMotors);
+    if (teleport) { teleport_arm_to(*teleport); moveBothArmsWithAngle(*teleport, kinovaArmRMotors); }
+    if (gripper)  apply_gripper_position(*gripper);
+    if (set_pose) apply_object_pose(set_pose->first, set_pose->second);
+}
+
+// Read the post-step sensor/pose state and republish the snapshot the servants serve.
+void SpecificWorker::publish_webots_state()
+{
+    RoboCompKinovaArm::TJoints  j = getJoints(kinovaArmRSensors, kinovaArmRMotors);
+    RoboCompKinovaArm::TGripper g = read_gripper_state();
+
+    std::vector<std::string> defs;
+    {
+        std::lock_guard<std::mutex> lk(io_mutex_);
+        defs = polled_defs_;
+    }
+    std::unordered_map<std::string, RoboCompWebots2Robocomp::ObjectPose> poses;
+    poses.reserve(defs.size());
+    for (const auto& d : defs) poses[d] = read_object_pose(d);
+
+    {
+        std::lock_guard<std::mutex> lk(io_mutex_);
+        joints_snapshot_  = std::move(j);
+        gripper_snapshot_ = g;
+        for (auto& [k, v] : poses) pose_snapshot_[k] = v;
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -623,6 +680,14 @@ RoboCompKinovaArm::TPose SpecificWorker::KinovaArm_getCenterOfTool(RoboCompKinov
 
 RoboCompKinovaArm::TGripper SpecificWorker::KinovaArm_getGripperState()
 {
+	// Servant (Ice thread): return the last snapshot — no Webots access.
+	std::lock_guard<std::mutex> lk(io_mutex_);
+	return gripper_snapshot_;
+}
+
+// Main-thread Webots read (called from publish_webots_state, after the step).
+RoboCompKinovaArm::TGripper SpecificWorker::read_gripper_state()
+{
 	RoboCompKinovaArm::TGripper ret{};
 	// |force| from each fingertip force-3d TouchSensor (N). With one sensor per
 	// finger the finger and tip forces are the same value.
@@ -641,18 +706,25 @@ RoboCompKinovaArm::TGripper SpecificWorker::KinovaArm_getGripperState()
 	const float fl_mot = right_hand.second ? std::abs(static_cast<float>(right_hand.second->getTorqueFeedback())) : 0.0f;
 	ret.rforce    = fr_mot;   ret.lforce    = fl_mot;   // grip force (motor)
 	ret.rtipforce = fr_tip;   ret.ltipforce = fl_tip;   // tip force (tactile)
+	// Distal-tip bumpers: binary contact (a frontal collision on a misaligned approach).
+	// bumper getValue() is 1.0 on contact, 0.0 otherwise; false if the sensor is absent.
+	ret.rtipcontact = finger_tip_right and finger_tip_right->getValue() > 0.5;
+	ret.ltipcontact = finger_tip_left  and finger_tip_left->getValue()  > 0.5;
 
 	// Diagnostic: compare both sources, throttled.
 	static int dbg = 0;
 	if (dbg++ % 20 == 0)
 		std::cout << "[gripper-force] tip(touch) R=" << fr_tip << " L=" << fl_tip
-		          << "  grip(motor) R=" << fr_mot << " L=" << fl_mot << std::endl;
+		          << "  grip(motor) R=" << fr_mot << " L=" << fl_mot
+		          << "  bumper R=" << ret.rtipcontact << " L=" << ret.ltipcontact << std::endl;
 	return ret;
 }
 
 RoboCompKinovaArm::TJoints SpecificWorker::KinovaArm_getJointsState()
 {
-    return getJoints(kinovaArmRSensors, kinovaArmRMotors);
+    // Servant (Ice thread): return the last snapshot — no Webots access.
+    std::lock_guard<std::mutex> lk(io_mutex_);
+    return joints_snapshot_;
 }
 
 RoboCompKinovaArm::TToolInfo SpecificWorker::KinovaArm_getToolInfo()
@@ -665,12 +737,16 @@ RoboCompKinovaArm::TToolInfo SpecificWorker::KinovaArm_getToolInfo()
 
 void SpecificWorker::KinovaArm_moveJointsWithAngle(RoboCompKinovaArm::TJointAngles angles)
 {
-    moveBothArmsWithAngle(angles.jointAngles, kinovaArmRMotors);
+    // Servant (Ice thread): buffer the command — compute() applies it before the next step.
+    std::lock_guard<std::mutex> lk(io_mutex_);
+    pending_angles_ = angles.jointAngles;
 }
 
 void SpecificWorker::KinovaArm_moveJointsWithSpeed(RoboCompKinovaArm::TJointSpeeds speeds)
 {
-    moveBothArmsWithSpeed(speeds.jointSpeeds, kinovaArmRMotors);
+    // Servant (Ice thread): buffer the command — compute() applies it before the next step.
+    std::lock_guard<std::mutex> lk(io_mutex_);
+    pending_speeds_ = speeds.jointSpeeds;
 }
 void SpecificWorker::KinovaArm_openGripper()
 {
@@ -686,6 +762,15 @@ void SpecificWorker::KinovaArm_setCenterOfTool(RoboCompKinovaArm::TPose pose, Ro
 
 bool SpecificWorker::KinovaArm_setGripperPos(float pos)
 {
+    // Servant (Ice thread): buffer the command — compute() applies it before the next step.
+    std::lock_guard<std::mutex> lk(io_mutex_);
+    pending_gripper_ = pos;
+    return true;
+}
+
+// Main-thread Webots write (called from apply_pending_commands, before the step).
+void SpecificWorker::apply_gripper_position(float pos)
+{
     // Convention (matches the KinovaArm.idsl contract used by the
     // active-inference controller): pos ∈ [0, 1] with
     //   pos = 0 → fully closed (slider at armsMinPosition)
@@ -694,7 +779,7 @@ bool SpecificWorker::KinovaArm_setGripperPos(float pos)
     // because armsMinMaxPosition was zero-initialised and the inversion
     // hid the bug; now both are fixed together.
     if (not right_hand.first or not right_hand.second)
-        return false;                 // gripper motors absent (see initialize guard)
+        return;                       // gripper motors absent (see initialize guard)
     pos = std::clamp(pos, 0.0f, 1.0f);
     float target = armsMinMaxPosition.first + pos * (armsMinMaxPosition.second - armsMinMaxPosition.first);     // [0,1] → [minPosition, maxPosition]
 
@@ -722,8 +807,6 @@ bool SpecificWorker::KinovaArm_setGripperPos(float pos)
                   << ", " << armsMinMaxPosition.second << "]" << std::endl;
         first_setgripper_logged = true;
     }
-
-    return true;
 }
 
 #pragma endregion KINOVA_ARM_R_INTERFACE
@@ -1165,6 +1248,32 @@ webots::Node* SpecificWorker::find_scene_node(const std::string& key)
 
 RoboCompWebots2Robocomp::ObjectPose SpecificWorker::Webots2Robocomp_getObjectPose(std::string DEF)
 {
+    // Servant (Ice thread): serve from the snapshot. Register the DEF so compute() polls it
+    // each step. On the FIRST ever request for a DEF the snapshot has no entry yet — seed it
+    // with one direct read (done WITHOUT holding io_mutex_, and only at startup before the
+    // arm is in a motion-critical phase) so a consumer that caches the first reading (e.g.
+    // the static robot/table poses) never caches an empty pose.
+    bool need_seed = false;
+    {
+        std::lock_guard<std::mutex> lk(io_mutex_);
+        if (std::find(polled_defs_.begin(), polled_defs_.end(), DEF) == polled_defs_.end())
+            polled_defs_.push_back(DEF);
+        auto it = pose_snapshot_.find(DEF);
+        if (it != pose_snapshot_.end()) return it->second;
+        need_seed = true;
+    }
+    RoboCompWebots2Robocomp::ObjectPose seeded{};
+    if (need_seed) seeded = read_object_pose(DEF);
+    {
+        std::lock_guard<std::mutex> lk(io_mutex_);
+        pose_snapshot_[DEF] = seeded;
+    }
+    return seeded;
+}
+
+// Main-thread Webots supervisor read (called from publish_webots_state, after the step).
+RoboCompWebots2Robocomp::ObjectPose SpecificWorker::read_object_pose(const std::string& DEF)
+{
     RoboCompWebots2Robocomp::ObjectPose ret{};
     webots::Node *object_node = find_scene_node(DEF);
     if (object_node == nullptr) {
@@ -1187,6 +1296,14 @@ RoboCompWebots2Robocomp::ObjectPose SpecificWorker::Webots2Robocomp_getObjectPos
 }
 
 void SpecificWorker::Webots2Robocomp_setObjectPose(std::string DEF, RoboCompWebots2Robocomp::ObjectPose pose)
+{
+    // Servant (Ice thread): buffer the teleport — compute() applies it before the next step.
+    std::lock_guard<std::mutex> lk(io_mutex_);
+    pending_set_pose_ = std::make_pair(DEF, pose);
+}
+
+// Main-thread Webots supervisor write (called from apply_pending_commands, before the step).
+void SpecificWorker::apply_object_pose(const std::string& DEF, const RoboCompWebots2Robocomp::ObjectPose& pose)
 {
     // Teleport a supervised scene node to a new pose (mm + quaternion, matching
     // getObjectPose's convention). Used to re-stand a toppled/fallen object so
@@ -1241,9 +1358,11 @@ void SpecificWorker::Webots2Robocomp_setArmJointsInstant(RoboCompKinovaArm::TJoi
     // pose WITHOUT sweeping the gripper through the table. teleport_arm_to sets the
     // joint coordinates directly (no dynamics); then pin the motors at the same
     // angles so they hold it once the controller's velocity commands stop.
-    teleport_arm_to(angles.jointAngles);
-    moveBothArmsWithAngle(angles.jointAngles, kinovaArmRMotors);
-    std::cout << "[recovery] setArmJointsInstant: arm teleported to ["
+    // Servant (Ice thread): buffer it — compute() does the supervisor snap + motor pin
+    // before the next step (apply_pending_commands handles the teleport branch).
+    std::lock_guard<std::mutex> lk(io_mutex_);
+    pending_teleport_ = angles.jointAngles;
+    std::cout << "[recovery] setArmJointsInstant: arm teleport queued ["
               << angles.jointAngles.size() << " joints]" << std::endl;
 }
 

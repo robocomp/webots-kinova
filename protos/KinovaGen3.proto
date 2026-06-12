@@ -271,6 +271,17 @@ PROTO KinovaGen3 [
                                                             appearance USE base_link_material
                                                             geometry DEF basic_finger Box { size 0.01 0.02 0.045 }
                                                           }
+                                                          # Distal-tip BUMPER: binary contact at the leading
+                                                          # tip (−Z, the approach direction) to catch a frontal
+                                                          # collision with the object on a misaligned approach.
+                                                          # No own physics: nested in the finger body; its
+                                                          # boundingObject joins the finger's collision shape.
+                                                          TouchSensor {
+                                                            type "bumper"
+                                                            translation 0 0 -0.024
+                                                            name %<= '"' + fields.prefix.value + "Hand_Tip_Right" + '"'; >%
+                                                            boundingObject Box { size 0.011 0.021 0.006 }
+                                                          }
                                                         ]
                                                         name %<= '"' + fields.prefix.value + "Hand_Finger_Right" + '"'; >%
                                                         contactMaterial "finger_material"
@@ -318,6 +329,13 @@ PROTO KinovaGen3 [
                                                             }
                                                             geometry DEF basic_finger_left Box { size 0.01 0.02 0.045 }
                                                           }
+                                                          # Distal-tip BUMPER (see right finger).
+                                                          TouchSensor {
+                                                            type "bumper"
+                                                            translation 0 0 -0.024
+                                                            name %<= '"' + fields.prefix.value + "Hand_Tip_Left" + '"'; >%
+                                                            boundingObject Box { size 0.011 0.021 0.006 }
+                                                          }
                                                         ]
                                                         name %<= '"' + fields.prefix.value + "Hand_Finger_Left" + '"'; >%
                                                         contactMaterial "finger_material"
@@ -337,9 +355,42 @@ PROTO KinovaGen3 [
                                                     url "./kinova_arm_meshes/bracelet_with_vision_link.STL"
                                                   }
                                                 }
+                                                # PALM / backstop. The simplified box fingers had no body
+                                                # behind them, so an over-inserted object slipped into the
+                                                # void past the finger bases and was lost. This static box,
+                                                # sized from the URDF robotiq_arg2f_base_link, closes that
+                                                # void and gives a hard seat stop for the insertion depth.
+                                                # Moved 1 cm FORWARD (-Z, object side: -0.117 -> -0.127): a
+                                                # small backstop behind the finger base (z=-0.167) WITHOUT
+                                                # jamming the object against the palm (3 cm forward, -0.147,
+                                                # stole the finger clamp and dropped grip from 40 N to ~6 N,
+                                                # so the bottle pivoted in the jaws). Collision below.
+                                                Pose {
+                                                  translation 0 0 -0.127
+                                                  children [
+                                                    Shape {
+                                                      appearance PBRAppearance {
+                                                        baseColor 0.1 0.9 0.1
+                                                        roughness 1.0
+                                                        metalness 0
+                                                      }
+                                                      geometry Box { size 0.06 0.03 0.02 }
+                                                    }
+                                                  ]
+                                                }
                                               ]
                                               name "Bracelet_Link"
-                                              boundingObject USE Bracelet_Link
+                                              boundingObject Group {
+                                                children [
+                                                  USE Bracelet_Link
+                                                  Pose {
+                                                    translation 0 0 -0.127
+                                                    children [
+                                                      Box { size 0.06 0.03 0.02 }
+                                                    ]
+                                                  }
+                                                ]
+                                              }
                                               physics Physics {
                                                 density -1
                                                 mass 0.500600

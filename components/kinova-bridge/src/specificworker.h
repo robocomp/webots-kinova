@@ -51,6 +51,10 @@
 #include <doublebuffer/DoubleBuffer.h>
 #include <fps/fps.h>
 
+#include <mutex>
+#include <optional>
+#include <unordered_map>
+
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
 
@@ -243,6 +247,10 @@ private:
 	// PROTO). Read into TGripper.{lforce,rforce,...} by getGripperState.
 	webots::TouchSensor* finger_force_right = nullptr;
 	webots::TouchSensor* finger_force_left  = nullptr;
+	// Distal-tip BUMPER TouchSensors (binary contact, no force relaxation) — fire on a
+	// frontal collision when the gripper approaches the object misaligned. → TGripper.{l,r}tipcontact.
+	webots::TouchSensor* finger_tip_right = nullptr;
+	webots::TouchSensor* finger_tip_left  = nullptr;
 
     /**
      * Other variables
@@ -307,6 +315,31 @@ private:
     void printNotImplementedWarningMessage(const string functionName);
 
     RoboCompKinovaArm::TJoints getJoints(std::vector<webots::PositionSensor *> &armSensors, std::vector<webots::Motor *> &armMotors);
+
+    // ── Async I/O decoupling ─────────────────────────────────────────────────
+    // The Webots API is NOT thread-safe and is synchronized to robot->step(); calling it
+    // from the Ice servant threads serializes against the main-thread step and stalls the
+    // CLIENT 0.2–0.7 s/cycle (its held velocity command then overshoots → arm oscillation).
+    // Fix: servants only touch these mutex-protected buffers — never Webots. compute() (the
+    // only thread allowed to touch Webots) drains the pending commands before the step and
+    // republishes the sensor/pose snapshot after it. Every servant call now returns in µs.
+    std::mutex                                          io_mutex_;
+    RoboCompKinovaArm::TJoints                          joints_snapshot_;
+    RoboCompKinovaArm::TGripper                         gripper_snapshot_;
+    std::unordered_map<std::string, RoboCompWebots2Robocomp::ObjectPose> pose_snapshot_;
+    std::vector<std::string>                            polled_defs_;          // DEFs to poll each step
+    std::optional<std::vector<float>>                   pending_speeds_;
+    std::optional<std::vector<float>>                   pending_angles_;
+    std::optional<float>                                pending_gripper_;
+    std::optional<std::vector<float>>                   pending_teleport_;     // supervisor instant + pin
+    std::optional<std::pair<std::string, RoboCompWebots2Robocomp::ObjectPose>> pending_set_pose_;
+
+    void apply_pending_commands();   // main thread: drain buffers → Webots, BEFORE the step
+    void publish_webots_state();     // main thread: Webots → snapshots, AFTER the step
+    void apply_gripper_position(float pos);                                   // gripper write (main thread)
+    void apply_object_pose(const std::string& DEF, const RoboCompWebots2Robocomp::ObjectPose& pose);  // supervisor write (main thread)
+    RoboCompKinovaArm::TGripper         read_gripper_state();                 // gripper read  (main thread)
+    RoboCompWebots2Robocomp::ObjectPose read_object_pose(const std::string& DEF);  // supervisor read (main thread)
 };
 
 #endif
