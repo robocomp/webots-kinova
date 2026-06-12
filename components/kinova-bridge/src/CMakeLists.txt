@@ -26,7 +26,6 @@ INCLUDE( $ENV{ROBOCOMP}/cmake/modules/opencv4.cmake )
 
 # Disabling Pragma region warnings.
 add_definitions(
-    -g
     -O3               # Máxima optimización
     -Wall             # Todos los warnings
     -fmax-errors=1    # Mostrar solo 1 error

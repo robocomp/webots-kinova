@@ -35,10 +35,10 @@ public:
 
 	RoboCompWebots2Robocomp::ObjectPose getObjectPose(std::string DEF, const Ice::Current&);
 	void resetWebots(const Ice::Current&);
+	void setArmJointsInstant(RoboCompKinovaArm::TJointAngles angles, const Ice::Current&);
 	void setDoorAngle(float angle, const Ice::Current&);
 	void setObjectPose(std::string DEF, RoboCompWebots2Robocomp::ObjectPose pose, const Ice::Current&);
 	void setPathToHuman(int humanId, RoboCompGridder::TPath path, const Ice::Current&);
-	void setArmJointsInstant(RoboCompKinovaArm::TJointAngles angles, const Ice::Current&);
 
 private:
 
@@ -48,10 +48,10 @@ private:
 	// Array handlers for each method
 	std::array<std::function<RoboCompWebots2Robocomp::ObjectPose(std::string&)>, 1> getObjectPoseHandlers;
 	std::array<std::function<void(void)>, 1> resetWebotsHandlers;
+	std::array<std::function<void(RoboCompKinovaArm::TJointAngles&)>, 1> setArmJointsInstantHandlers;
 	std::array<std::function<void(float&)>, 1> setDoorAngleHandlers;
 	std::array<std::function<void(std::string&, RoboCompWebots2Robocomp::ObjectPose&)>, 1> setObjectPoseHandlers;
 	std::array<std::function<void(int&, RoboCompGridder::TPath&)>, 1> setPathToHumanHandlers;
-	std::array<std::function<void(RoboCompKinovaArm::TJointAngles&)>, 1> setArmJointsInstantHandlers;
 
 };
 
